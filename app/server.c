@@ -6,6 +6,7 @@
 #include <netinet/ip.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 typedef struct {
@@ -15,17 +16,26 @@ typedef struct {
     uint16_t ANCOUNT;
     uint16_t NSOCUNT;
     uint16_t ARCOUNT;
-} dns_header;
+} __attribute__((packed)) dns_header;
 
 typedef struct {
     unsigned char* name;
     uint16_t type;
     uint16_t class;
-}dns_question;
+}  __attribute__((packed)) dns_question;
+
+typedef struct {
+    unsigned char* name;
+    uint16_t type;
+    uint16_t class;
+    uint32_t ttl;
+    uint16_t rd_length;
+    unsigned char* data;
+}  __attribute__((packed)) dns_answer;
 
 
 
-void pack_response (unsigned char* buffer, dns_header *header, dns_question *question);
+void pack_response (unsigned char* buffer, dns_header *header, dns_question *question, dns_answer *answer);
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -80,9 +90,11 @@ int main() {
        // Create an empty response
         dns_header header = {0};
         dns_question question;
+        dns_answer answer;
         header.ID = htons(1234);
         header.FLAGS |= (1 << 7);
         header.QDCOUNT = htons(1);
+        header.ANCOUNT = htons(1);
         unsigned char name[] = { 0x0C,
             'c', 'o', 'd', 'e', 'c', 'r', 'a', 'f', 't', 'e', 'r', 's',
             0x02,  
@@ -91,12 +103,24 @@ int main() {
         question.name = name;
         question.type = htons(1);
         question.class = htons(1);
+        answer.name = name;
+        answer.type = htons(1);
+        answer.class = htons(1);
+        answer.ttl = htonl(69);
+        answer.rd_length = htons(4);
+        unsigned char ip[] = { 0x08, 0x08, 0x08, 0x08 };
+        answer.data = ip;
+
         
         unsigned char response[512] = {0};
 
-         int packet_size = sizeof(dns_header) + strlen((char*)question.name) + 1 + sizeof(question.type) + sizeof(question.class);
-        pack_response(response,  &header, &question);
+        pack_response(response,  &header, &question, &answer);
 
+        int q_size = strlen((char*)question.name) + 1 + sizeof(question.type) + sizeof(question.class);
+        int a_size = strlen((char*)answer.name) + 1 + sizeof(answer.type) + sizeof(answer.class) + sizeof(answer.ttl) + sizeof(answer.rd_length) + sizeof(answer.data);
+
+        int packet_size = sizeof(dns_header) + q_size + a_size;
+        printf("size: %d\n", packet_size);
         if (sendto(udpSocket, &response,packet_size, 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
             perror("Failed to send response");
         }
@@ -108,7 +132,7 @@ int main() {
 }
 
 
-void pack_response (unsigned char* buffer, dns_header *header, dns_question *question){
+void pack_response (unsigned char* buffer, dns_header *header, dns_question *question, dns_answer *answer){
     int x = 0;
     memcpy(buffer, header, sizeof(dns_header));
     x += sizeof(dns_header);
@@ -118,6 +142,26 @@ void pack_response (unsigned char* buffer, dns_header *header, dns_question *que
     memcpy(buffer+x, &question->class, sizeof(uint16_t));
     x += sizeof(uint16_t);
     memcpy(buffer+x, &question->type, sizeof(uint16_t));
+    x += sizeof(uint16_t);
+
+    name_len = strlen((char*)answer->name)+1;
+    memcpy(buffer+x, answer->name,  name_len);
+    x+= name_len;
+
+    memcpy(buffer+x, &answer->type, sizeof(uint16_t));
+    x += sizeof(uint16_t);
+
+    memcpy(buffer+x, &answer->class,  sizeof(uint16_t));
+    x += sizeof(uint16_t);
+
+    memcpy(buffer+x, &answer->ttl, sizeof(uint32_t));
+    x += sizeof(uint32_t);
+
+    memcpy(buffer+x, &answer->rd_length, sizeof(uint16_t));
+    x += sizeof(uint16_t);
+
+    memcpy(buffer+x, &answer->data, ntohs(answer->rd_length));
+    x += ntohs(answer->rd_length);   
 }
 
 
