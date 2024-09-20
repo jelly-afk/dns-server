@@ -17,6 +17,15 @@ typedef struct {
     uint16_t ARCOUNT;
 } dns_header;
 
+typedef struct {
+    unsigned char* name;
+    uint16_t type;
+    uint16_t class;
+}dns_question;
+
+
+
+void pack_response (unsigned char* buffer, dns_header *header, dns_question *question);
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -69,20 +78,55 @@ int main() {
        printf("Received %d bytes: %s\n", bytesRead, buffer);
    
        // Create an empty response
-   
-        dns_header response = {0};
-        response.ID = htons(1234);
-        response.FLAGS |= (1 << 7);
+        dns_header header = {0};
+        dns_question question;
+        header.ID = htons(1234);
+        header.FLAGS |= (1 << 7);
+        header.QDCOUNT = htons(1);
+        unsigned char name[] = { 0x0C,
+            'c', 'o', 'd', 'e', 'c', 'r', 'a', 'f', 't', 'e', 'r', 's',
+            0x02,  
+            'i', 'o', 0x00 
+        };
+        question.name = name;
+        question.type = htons(1);
+        question.class = htons(1);
+        
+        unsigned char response[512] = {0};
 
-        printf("size: %lu\n", sizeof(response));
-       // Send response
-       if (sendto(udpSocket, &response, sizeof(response), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
-           perror("Failed to send response");
-       }
-   }
-   
+         int packet_size = sizeof(dns_header) + strlen((char*)question.name) + 1 + sizeof(question.type) + sizeof(question.class);
+        pack_response(response,  &header, &question);
+
+        if (sendto(udpSocket, &response,packet_size, 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
+            perror("Failed to send response");
+        }
+    }
+
    close(udpSocket);
 
     return 0;
 }
+
+
+void pack_response (unsigned char* buffer, dns_header *header, dns_question *question){
+    int x = 0;
+    memcpy(buffer, header, sizeof(dns_header));
+    x += sizeof(dns_header);
+    int name_len = strlen((char*)question->name)+1;
+    memcpy(buffer+x, question->name, name_len);
+    x += name_len;
+    memcpy(buffer+x, &question->class, sizeof(uint16_t));
+    x += sizeof(uint16_t);
+    memcpy(buffer+x, &question->type, sizeof(uint16_t));
+}
+
+
+
+
+
+
+
+
+
+
 
