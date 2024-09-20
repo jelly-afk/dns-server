@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -6,6 +7,15 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+
+typedef struct {
+    uint16_t ID;
+    uint16_t FLAGS;
+    uint16_t QDCOUNT;
+    uint16_t ANCOUNT;
+    uint16_t NSOCUNT;
+    uint16_t ARCOUNT;
+} dns_header;
 
 int main() {
 	// Disable output buffering
@@ -59,10 +69,14 @@ int main() {
        printf("Received %d bytes: %s\n", bytesRead, buffer);
    
        // Create an empty response
-       char response[1] = { '\0' };
    
+        dns_header response = {0};
+        response.ID = htons(1234);
+        response.FLAGS |= (1 << 7);
+
+        printf("size: %lu\n", sizeof(response));
        // Send response
-       if (sendto(udpSocket, response, sizeof(response), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
+       if (sendto(udpSocket, &response, sizeof(response), 0, (struct sockaddr*)&clientAddress, sizeof(clientAddress)) == -1) {
            perror("Failed to send response");
        }
    }
